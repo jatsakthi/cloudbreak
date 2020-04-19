@@ -22,6 +22,8 @@ class InstanceTemplateRequestToTemplateConverterTest {
 
     private static final CloudPlatform CLOUD_PLATFORM = CloudPlatform.AWS;
 
+    private static final String ACCOUNT_ID = "accountId";
+
     @Mock
     private MissingResourceNameGenerator missingResourceNameGenerator;
 
@@ -39,7 +41,7 @@ class InstanceTemplateRequestToTemplateConverterTest {
         InstanceTemplateRequest source = new InstanceTemplateRequest();
         source.setInstanceType("m5.2xlarge");
 
-        Template result = underTest.convert(source, CLOUD_PLATFORM);
+        Template result = underTest.convert(source, CLOUD_PLATFORM, ACCOUNT_ID);
 
         Assertions.assertThat(result.getInstanceType()).isEqualTo(source.getInstanceType());
     }
@@ -51,7 +53,7 @@ class InstanceTemplateRequestToTemplateConverterTest {
         InstanceTemplateRequest source = new InstanceTemplateRequest();
         Mockito.when(defaultInstanceTypeProvider.getForPlatform(CLOUD_PLATFORM.name())).thenReturn(defaultInstanceType);
 
-        Template result = underTest.convert(source, CLOUD_PLATFORM);
+        Template result = underTest.convert(source, CLOUD_PLATFORM, ACCOUNT_ID);
 
         Assertions.assertThat(result.getInstanceType()).isEqualTo(defaultInstanceType);
     }
@@ -69,7 +71,7 @@ class InstanceTemplateRequestToTemplateConverterTest {
         source.setInstanceType("m5.2xlarge");
         source.setAws(aws);
 
-        Template result = underTest.convert(source, CLOUD_PLATFORM);
+        Template result = underTest.convert(source, CLOUD_PLATFORM, ACCOUNT_ID);
 
         Object resultSpotPercentage = result.getAttributes().getValue("spotPercentage");
         Assertions.assertThat(resultSpotPercentage).isEqualTo(spotPercentage);

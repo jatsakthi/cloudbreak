@@ -182,6 +182,8 @@ public class AwsVolumeResourceBuilder extends AbstractAwsComputeBuilder {
         Long ephemeralCount = group.getReferenceInstanceConfiguration().getTemplate().getVolumes().stream()
                 .filter(vol -> AwsDiskType.Ephemeral.value().equalsIgnoreCase(vol.getType())).collect(Collectors.counting());
 
+        LOGGER.debug("Start creating data volumes for stack: '{}' group: '{}'", auth.getCloudContext().getName(), group.getName());
+
         for (CloudResource resource : requestedResources) {
             volumeSetMap.put(resource.getName(), Collections.synchronizedList(new ArrayList<>()));
 
@@ -201,6 +203,8 @@ public class AwsVolumeResourceBuilder extends AbstractAwsComputeBuilder {
         for (Future<?> future : futures) {
             future.get();
         }
+
+        LOGGER.debug("Finished creating data volumes for stack: '{}' group: '{}'", auth.getCloudContext().getName(), group.getName());
 
         return buildableResource.stream()
                 .peek(resource -> {
