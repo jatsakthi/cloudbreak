@@ -20,6 +20,7 @@ import com.microsoft.azure.CloudException;
 import com.microsoft.azure.management.resources.Deployment;
 import com.microsoft.azure.management.resources.ResourceGroup;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureCloudResourceService;
+import com.sequenceiq.cloudbreak.cloud.azure.AzureDownscaleService;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureResourceGroupMetadataProvider;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureTemplateBuilder;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureUtils;
@@ -56,6 +57,9 @@ public class AzureDatabaseResourceService {
 
     @Inject
     private AzureCloudResourceService azureCloudResourceService;
+
+    @Inject
+    private AzureDownscaleService azureDownscaleService;
 
     public List<CloudResourceStatus> buildDatabaseResourcesForLaunch(AuthenticatedContext ac, DatabaseStack stack, PersistenceNotifier persistenceNotifier) {
         CloudContext cloudContext = ac.getCloudContext();
@@ -97,7 +101,7 @@ public class AzureDatabaseResourceService {
         List<CloudResource> databaseResources = createCloudResources(resourceGroupName, fqdn);
         databaseResources.forEach(dbr -> persistenceNotifier.notifyAllocation(dbr, cloudContext));
 
-        List<CloudResource> cloudResources = azureCloudResourceService.getCloudResources(deployment);
+        List<CloudResource> cloudResources = azureCloudResourceService.getDeploymentCloudResources(deployment);
         cloudResources.forEach(cloudResource -> persistenceNotifier.notifyAllocation(cloudResource, cloudContext));
 
         return databaseResources.stream()

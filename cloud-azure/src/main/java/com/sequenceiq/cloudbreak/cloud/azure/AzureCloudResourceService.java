@@ -18,11 +18,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import com.microsoft.azure.PagedList;
+import com.microsoft.azure.management.compute.OSDisk;
+import com.microsoft.azure.management.compute.StorageProfile;
+import com.microsoft.azure.management.compute.VirtualMachine;
 import com.microsoft.azure.management.network.Subnet;
 import com.microsoft.azure.management.resources.Deployment;
 import com.microsoft.azure.management.resources.DeploymentOperation;
 import com.microsoft.azure.management.resources.TargetResource;
 import com.sequenceiq.cloudbreak.cloud.azure.client.AzureClient;
+import com.sequenceiq.cloudbreak.cloud.context.AuthenticatedContext;
 import com.sequenceiq.cloudbreak.cloud.context.CloudContext;
 import com.sequenceiq.cloudbreak.cloud.model.CloudResource;
 import com.sequenceiq.cloudbreak.cloud.model.Group;
@@ -38,6 +42,9 @@ public class AzureCloudResourceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(AzureCloudResourceService.class);
 
     @Inject
+    private AzureResourceGroupMetadataProvider azureResourceGroupMetadataProvider;
+
+    @Inject
     private AzureUtils azureUtils;
 
     public List<CloudResource> getNetworkResources(List<CloudResource> resources) {
@@ -50,7 +57,7 @@ public class AzureCloudResourceService {
                 .collect(Collectors.toList());
     }
 
-    public List<CloudResource> getCloudResources(Deployment templateDeployment) {
+    public List<CloudResource> getDeploymentCloudResources(Deployment templateDeployment) {
         PagedList<DeploymentOperation> operations = templateDeployment.deploymentOperations().list();
         return operations.stream()
                 .filter(Predicate.not(Predicate.isEqual(null)))
@@ -185,8 +192,50 @@ public class AzureCloudResourceService {
                 .build();
     }
 
+    // OS disks are not part of the deployment as separate deployment operations meaning they should be collected
+    private CloudResource collectOsDisk(String instanceId, VirtualMachine virtualMachine) {
+        StorageProfile storageProfile = virtualMachine.storageProfile();
+        OSDisk osDisk = storageProfile.osDisk();
+        LOGGER.debug("OS disk {} found for VM {}", osDisk.name(), virtualMachine.name());
+        return CloudResource.builder()
+                .name(osDisk.name())
+                .instanceId(instanceId)
+                .status(CommonStatus.CREATED)
+                .persistent(true)
+                .reference(osDisk.managedDisk().id())
+                .type(ResourceType.AZURE_DISK)
+                .build();
+    }
+
+    public List<CloudResource> getAttachedOsDiskResources(AuthenticatedContext authenticatedContext, List<CloudResource> instanceList, String resourceGroupName) {
+
+        List<CloudResource> osDiskList = new ArrayList<>();
+        AzureClient client = authenticatedContext.getParameter(AzureClient.class);
+        PagedList<VirtualMachine> virtualMachines = client.getVirtualMachines(resourceGroupName);
+        virtualMachines.loadAll();
+
+        instanceList.forEach(vm ->
+                {
+                    Optional<VirtualMachine> matchingAzureVmOptional = virtualMachines
+                            .stream()
+                            .filter(azureVirtualMachine -> vm.getName().equals(azureVirtualMachine.name()))
+                            .findFirst();
+                    matchingAzureVmOptional.ifPresentOrElse(
+                            matchingAzureVm ->
+                                    osDiskList.add(collectOsDisk(vm.getInstanceId(), matchingAzureVm)),
+                            () -> LOGGER.warn("No Azure VM metadata found for the VM: " + vm.getInstanceId()));
+                }
+        );
+
+        return osDiskList;
+    }
+
     public void saveCloudResources(PersistenceNotifier notifier, CloudContext cloudContext, List<CloudResource> cloudResources) {
         cloudResources.forEach(cloudResource -> notifier.notifyAllocation(cloudResource, cloudContext));
+    }
+
+    public void deleteCloudResource(PersistenceNotifier notifier, CloudContext cloudContext, List<CloudResource> cloudResources) {
+        cloudResources.forEach(cloudResource -> notifier.notifyDeletion(cloudResource, cloudContext));
     }
 
     public List<CloudResource> collectAndSaveNetworkAndSubnet(String resourceGroupName, String virtualNetwork, PersistenceNotifier notifier,

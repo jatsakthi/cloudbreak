@@ -311,6 +311,11 @@ public class AzureClient {
         return handleAuthException(() -> azure.disks().deleteByIdAsync(id));
     }
 
+    public Completable deleteManagedDiskAsync(String resourceGroupName, String id) {
+        LOGGER.debug("delete managed disk: id={}", id);
+        return handleAuthException(() -> azure.disks().deleteByResourceGroupAsync(resourceGroupName, id));
+    }
+
     public DiskSkuTypes convertAzureDiskTypeToDiskSkuTypes(AzureDiskType diskType) {
         return Objects.nonNull(diskType) ? DiskSkuTypes.fromStorageAccountType(DiskStorageAccountTypes.fromString(diskType.value())) : DiskSkuTypes.STANDARD_LRS;
     }
@@ -474,6 +479,10 @@ public class AzureClient {
         return handleAuthException(() -> azure.publicIPAddresses().deleteByResourceGroupAsync(resourceGroup, ipName));
     }
 
+    public Observable<String> deleteSecurityGroupsAsnyc(Collection<String> ids) {
+        return handleAuthException(() -> azure.networkSecurityGroups().deleteByIdsAsync(ids));
+    }
+
     public void deletePublicIpAddressById(String ipId) {
         handleAuthException(() -> azure.publicIPAddresses().deleteById(ipId));
     }
@@ -537,8 +546,8 @@ public class AzureClient {
         return handleAuthException(() -> azure.networkInterfaces().getByResourceGroup(resourceGroup, networkInterfaceName));
     }
 
-    public Observable<NetworkInterface> getNetworkInterfaceAsync(String resourceGroup, String networkInterfaceName) {
-        return handleAuthException(() -> azure.networkInterfaces().getByResourceGroupAsync(resourceGroup, networkInterfaceName));
+    public PagedList<NetworkInterface> getNetworkInterfaces(String resourceGroup) {
+        return handleAuthException(() -> azure.networkInterfaces().listByResourceGroup(resourceGroup));
     }
 
     public NetworkInterface getNetworkInterfaceById(String networkInterfaceId) {
@@ -565,6 +574,14 @@ public class AzureClient {
             Network network = getNetworkByResourceGroup(resourceGroup, virtualNetwork);
             return network == null ? emptyMap() : network.subnets();
         });
+    }
+
+    public Observable<String> deleteNetworksAsync(Collection<String> networkIds) {
+        return handleAuthException(() -> azure.networks().deleteByIdsAsync(networkIds));
+    }
+
+    public NetworkSecurityGroups getSecurityGroups() {
+        return handleAuthException(azure::networkSecurityGroups);
     }
 
     public NetworkSecurityGroup getSecurityGroupProperties(String resourceGroup, String securityGroup) {
@@ -601,10 +618,6 @@ public class AzureClient {
     private Set<VirtualMachineSize> getAllElement(Collection<VirtualMachineSize> virtualMachineSizes, Set<VirtualMachineSize> resultList) {
         resultList.addAll(virtualMachineSizes);
         return resultList;
-    }
-
-    public NetworkSecurityGroups getSecurityGroups() {
-        return handleAuthException(azure::networkSecurityGroups);
     }
 
     public LoadBalancer getLoadBalancer(String resourceGroupName, String loadBalancerName) {

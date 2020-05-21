@@ -23,4 +23,7 @@ public interface DBResourceRepository extends JpaRepository<DBResource, Long> {
     @Query("SELECT r FROM DBResource r WHERE r.dbStack.id = :stackId")
     List<DBResource> findAllByStackId(@Param("stackId") long stackId);
 
+    @Query("SELECT r FROM DBResource r WHERE r.dbStack.id = :stackId AND r.resourceReference IS NOT NULL")
+    List<DBResource> findAllByStackIdWithResourceReference(@Param("stackId") long stackId);
+
 }

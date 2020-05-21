@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.text.WordUtils;
 import org.slf4j.Logger;
@@ -162,18 +163,8 @@ public class AzureUtils {
         return network.getParameters().containsKey(NO_PUBLIC_IP) ? network.getParameter(NO_PUBLIC_IP, Boolean.class) : false;
     }
 
-    public static List<CloudInstance> getInstanceList(CloudStack stack) {
+    public List<CloudInstance> getInstanceList(CloudStack stack) {
         return stack.getGroups().stream().flatMap(group -> group.getInstances().stream()).collect(Collectors.toList());
-    }
-
-    public static boolean hasManagedDisk(CloudStack stack) {
-        List<CloudInstance> instanceList = getInstanceList(stack);
-        return instanceList.stream().anyMatch(cloudInstance -> Boolean.TRUE.equals(cloudInstance.getTemplate().getParameter("managedDisk", Boolean.class)));
-    }
-
-    public static boolean hasUnmanagedDisk(CloudStack stack) {
-        List<CloudInstance> instanceList = getInstanceList(stack);
-        return instanceList.stream().anyMatch(cloudInstance -> !Boolean.TRUE.equals(cloudInstance.getTemplate().getParameter("managedDisk", Boolean.class)));
     }
 
     public String getCustomNetworkId(Network network) {
@@ -295,7 +286,7 @@ public class AzureUtils {
         for (String networkInterfaceName : networkInterfaceNames) {
             deleteCompletables.add(azureClient.deleteNetworkInterfaceAsync(resourceGroupName, networkInterfaceName)
                     .doOnError(throwable -> {
-                        LOGGER.error("Error happend on azure network interface delete: {}", networkInterfaceName, throwable);
+                        LOGGER.error("Error happened on azure network interface delete: {}", networkInterfaceName, throwable);
                         failedToDeleteNetworkInterfaces.add(networkInterfaceName);
                     })
                     .subscribeOn(Schedulers.io()));
@@ -315,7 +306,7 @@ public class AzureUtils {
         for (String publicIpName : publicIpNames) {
             deleteCompletables.add(azureClient.deletePublicIpAddressByNameAsync(resourceGroupName, publicIpName)
                     .doOnError(throwable -> {
-                        LOGGER.error("Error happend on azure public ip delete: {}", publicIpName, throwable);
+                        LOGGER.error("Error happened on azure public ip delete: {}", publicIpName, throwable);
                         failedToDeletePublicIps.add(publicIpName);
                     })
                     .subscribeOn(Schedulers.io()));
@@ -335,7 +326,7 @@ public class AzureUtils {
         for (String availabilitySetName : availabilitySetNames) {
             deleteCompletables.add(azureClient.deleteAvailabilitySetAsync(resourceGroupName, availabilitySetName)
                     .doOnError(throwable -> {
-                        LOGGER.error("Error happend on azure availability set delete: {}", availabilitySetName, throwable);
+                        LOGGER.error("Error happened on azure availability set delete: {}", availabilitySetName, throwable);
                         failedToDeleteAvailabiltySets.add(availabilitySetName);
                     })
                     .subscribeOn(Schedulers.io()));
@@ -348,14 +339,46 @@ public class AzureUtils {
     }
 
     @Retryable(backoff = @Backoff(delay = 1000, multiplier = 2, maxDelay = 10000), maxAttempts = 5)
-    public void deleteManagedDisks(AzureClient azureClient, Collection<String> managedDiskIds) {
+    public void deleteSecurityGroups(AzureClient azureClient, Collection<String> securityGroupIds) {
+        if (CollectionUtils.isNotEmpty(securityGroupIds)) {
+            LOGGER.info("Delete security groups with id-s: {}", securityGroupIds);
+
+            azureClient.deleteSecurityGroupsAsnyc(securityGroupIds)
+                    .doOnError(throwable -> {
+                        LOGGER.error("Error happened during the deletion of the security groups ", throwable);
+                        throw new CloudbreakServiceException("Can't delete all security groups: ", throwable);
+                    })
+                    .doOnCompleted(() -> LOGGER.debug("Delete security groups completed successfully"))
+                    .subscribeOn(Schedulers.io())
+                    .subscribe(sg -> LOGGER.debug("Deleting {}", sg));
+        }
+    }
+
+    @Retryable(backoff = @Backoff(delay = 1000, multiplier = 2, maxDelay = 10000), maxAttempts = 5)
+    public void deleteNetworks(AzureClient azureClient, Collection<String> networkIds) {
+        if (CollectionUtils.isNotEmpty(networkIds)) {
+            LOGGER.info("Delete networks with id-s: {}", networkIds);
+
+            azureClient.deleteNetworksAsync(networkIds)
+                    .doOnError(throwable -> {
+                        LOGGER.error("Error happened during the deletion of the networks ", throwable);
+                        throw new CloudbreakServiceException("Can't delete all networks: ", throwable);
+                    })
+                    .doOnCompleted(() -> LOGGER.debug("Delete networks completed successfully"))
+                    .subscribeOn(Schedulers.io())
+                    .subscribe(network -> LOGGER.debug("Deleting {}", network));
+        }
+    }
+
+    @Retryable(backoff = @Backoff(delay = 1000, multiplier = 2, maxDelay = 10000), maxAttempts = 5)
+    public void deleteManagedDisks(AzureClient azureClient, String resourceGroupName, Collection<String> managedDiskIds) {
         LOGGER.info("Delete managed disks: {}", managedDiskIds);
         List<Completable> deleteCompletables = new ArrayList<>();
         List<String> failedToDeleteManagedDisks = new ArrayList<>();
         for (String managedDiskId : managedDiskIds) {
-            deleteCompletables.add(azureClient.deleteManagedDiskAsync(managedDiskId)
+            deleteCompletables.add(azureClient.deleteManagedDiskAsync(resourceGroupName, managedDiskId)
                     .doOnError(throwable -> {
-                        LOGGER.error("Error happend on azure managed disk delete: {}", managedDiskId, throwable);
+                        LOGGER.error("Error happened on azure managed disk delete: {}", managedDiskId, throwable);
                         failedToDeleteManagedDisks.add(managedDiskId);
                     })
                     .subscribeOn(Schedulers.io()));
@@ -381,6 +404,26 @@ public class AzureUtils {
         if (!failedToDeleteDatabaseServer.isEmpty()) {
             LOGGER.error("Can't delete database server: {}", failedToDeleteDatabaseServer);
             throw new CloudbreakServiceException("Can't delete database server: " + failedToDeleteDatabaseServer);
+        }
+    }
+
+    @Retryable(backoff = @Backoff(delay = 1000, multiplier = 2, maxDelay = 10000), maxAttempts = 5)
+    public void deleteManagedDisks(AzureClient azureClient, Collection<String> managedDiskNames) {
+        LOGGER.info("Delete managed disks: {}", managedDiskNames);
+        List<Completable> deleteCompletables = new ArrayList<>();
+        List<String> failedToDeleteManagedDisks = new ArrayList<>();
+        for (String managedDiskName : managedDiskNames) {
+            deleteCompletables.add(azureClient.deleteManagedDiskAsync(managedDiskName)
+                    .doOnError(throwable -> {
+                        LOGGER.error("Error happened on azure managed disk delete: {}", managedDiskName, throwable);
+                        failedToDeleteManagedDisks.add(managedDiskName);
+                    })
+                    .subscribeOn(Schedulers.io()));
+        }
+        Completable.merge(deleteCompletables).await();
+        if (!failedToDeleteManagedDisks.isEmpty()) {
+            LOGGER.error("Can't delete every managed disks: {}", failedToDeleteManagedDisks);
+            throw new CloudbreakServiceException("Can't delete managed disks: " + failedToDeleteManagedDisks);
         }
     }
 }

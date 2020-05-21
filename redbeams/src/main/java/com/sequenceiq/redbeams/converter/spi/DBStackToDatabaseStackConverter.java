@@ -158,4 +158,13 @@ public class DBStackToDatabaseStackConverter {
                 .map(AzureEnvironmentParameters::getResourceGroup);
     }
 
+//    private Optional<AzureResourceGroup> getResourceGroupFromEnv(Stack stack, DetailedEnvironmentResponse environment) {
+//        if (Objects.nonNull(stack) && CloudPlatform.AZURE.name().equals(stack.getCloudPlatform())) {
+//            return Optional.ofNullable(environment.getAzure())
+//                    .map(AzureEnvironmentParameters::getResourceGroup);
+//        } else {
+//            return Optional.empty();
+//        }
+//    }
+//
 }

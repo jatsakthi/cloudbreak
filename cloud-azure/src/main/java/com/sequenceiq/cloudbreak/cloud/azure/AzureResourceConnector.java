@@ -4,30 +4,23 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
+import org.apache.commons.collections4.ListUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import com.google.common.collect.Lists;
 import com.microsoft.azure.CloudError;
 import com.microsoft.azure.CloudException;
-import com.microsoft.azure.management.compute.OSDisk;
-import com.microsoft.azure.management.compute.StorageProfile;
-import com.microsoft.azure.management.compute.VirtualHardDisk;
-import com.microsoft.azure.management.compute.VirtualMachine;
-import com.microsoft.azure.management.network.NetworkInterface;
-import com.microsoft.azure.management.network.NicIPConfiguration;
 import com.microsoft.azure.management.resources.Deployment;
-import com.sequenceiq.cloudbreak.cloud.ResourceConnector;
 import com.sequenceiq.cloudbreak.cloud.azure.client.AzureClient;
 import com.sequenceiq.cloudbreak.cloud.azure.connector.resource.AzureComputeResourceService;
 import com.sequenceiq.cloudbreak.cloud.azure.connector.resource.AzureDatabaseResourceService;
@@ -48,27 +41,18 @@ import com.sequenceiq.cloudbreak.cloud.model.Group;
 import com.sequenceiq.cloudbreak.cloud.model.ResourceStatus;
 import com.sequenceiq.cloudbreak.cloud.model.TlsInfo;
 import com.sequenceiq.cloudbreak.cloud.notification.PersistenceNotifier;
+import com.sequenceiq.cloudbreak.cloud.template.AbstractResourceConnector;
 import com.sequenceiq.cloudbreak.service.Retry;
 import com.sequenceiq.cloudbreak.service.Retry.ActionFailedException;
 import com.sequenceiq.common.api.type.AdjustmentType;
 import com.sequenceiq.common.api.type.ResourceType;
 
 @Service
-public class AzureResourceConnector implements ResourceConnector<Map<String, Map<String, Object>>> {
+public class AzureResourceConnector extends AbstractResourceConnector {
 
     public static final String RESOURCE_GROUP_NAME = "resourceGroupName";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AzureResourceConnector.class);
-
-    private static final String NETWORK_INTERFACES_NAMES = "NETWORK_INTERFACES_NAMES";
-
-    private static final String STORAGE_PROFILE_DISK_NAMES = "STORAGE_PROFILE_DISK_NAMES";
-
-    private static final String ATTACHED_DISK_STORAGE_NAME = "ATTACHED_DISK_STORAGE_NAME";
-
-    private static final String MANAGED_DISK_IDS = "MANAGED_DISK_IDS";
-
-    private static final String PUBLIC_ADDRESS_NAME = "PUBLIC_ADDRESS_NAME";
 
     @Inject
     private AzureTemplateBuilder azureTemplateBuilder;
@@ -123,29 +107,24 @@ public class AzureResourceConnector implements ResourceConnector<Map<String, Map
                 cloudContext, stack, AzureInstanceTemplateOperation.PROVISION);
 
         String parameters = azureTemplateBuilder.buildParameters(ac.getCloudCredential(), stack.getNetwork(), stack.getImage());
-        Boolean encrytionNeeded = azureStorage.isEncrytionNeeded(stack.getParameters());
 
         try {
-            String region = cloudContext.getLocation().getRegion().value();
-            if (AzureUtils.hasUnmanagedDisk(stack)) {
-                Map<String, AzureDiskType> storageAccounts = azureStackView.getStorageAccounts();
-                for (Entry<String, AzureDiskType> entry : storageAccounts.entrySet()) {
-                    azureStorage.createStorage(client, entry.getKey(), entry.getValue(), resourceGroupName, region, encrytionNeeded, stack.getTags());
-                }
-            }
             if (!client.templateDeploymentExists(resourceGroupName, stackName)) {
                 Deployment templateDeployment = client.createTemplateDeployment(resourceGroupName, stackName, template, parameters);
                 LOGGER.debug("Created template deployment for launch: {}", templateDeployment.exportTemplate().template());
 
-                List<CloudResource> cloudResources = azureCloudResourceService.getCloudResources(templateDeployment);
-                azureCloudResourceService.saveCloudResources(notifier, cloudContext, cloudResources);
+                List<CloudResource> templateResources = azureCloudResourceService.getDeploymentCloudResources(templateDeployment);
+                List<CloudResource> instances =
+                        azureCloudResourceService.getInstanceCloudResources(stackName, templateResources, stack.getGroups(), resourceGroupName);
+                List<CloudResource> osDiskResources = azureCloudResourceService.getAttachedOsDiskResources(ac, instances, resourceGroupName);
+
+                azureCloudResourceService.saveCloudResources(notifier, cloudContext, ListUtils.union(templateResources, osDiskResources));
 
                 String networkName = azureUtils.getCustomNetworkId(stack.getNetwork());
                 List<String> subnetNameList = azureUtils.getCustomSubnetIds(stack.getNetwork());
                 List<CloudResource> networkResources = azureCloudResourceService.collectAndSaveNetworkAndSubnet(
                         resourceGroupName, stackName, notifier, cloudContext, subnetNameList, networkName, client);
-                List<CloudResource> instances = azureCloudResourceService.getInstanceCloudResources(
-                        stackName, cloudResources, stack.getGroups(), resourceGroupName);
+
                 azureComputeResourceService.buildComputeResourcesForLaunch(ac, stack, adjustmentType, threshold, instances, networkResources);
             }
         } catch (CloudException e) {
@@ -238,7 +217,14 @@ public class AzureResourceConnector implements ResourceConnector<Map<String, Map
     public List<CloudResourceStatus> terminate(AuthenticatedContext ac, CloudStack stack, List<CloudResource> resources) {
         AzureClient client = ac.getParameter(AzureClient.class);
         String resourceGroupName = azureResourceGroupMetadataProvider.getResourceGroupName(ac.getCloudContext(), stack);
-        for (CloudResource resource : resources) {
+        Boolean singleResourceGroup = azureResourceGroupMetadataProvider.useSingleResourceGroup(stack);
+
+        if (singleResourceGroup) {
+            List<CloudResource> cloudResourceList = collectResourcesToRemove(ac, stack, resources, azureUtils.getInstanceList(stack));
+            resources.addAll(cloudResourceList);
+            azureDownscaleService.terminate(ac, stack, resources);
+            return check(ac, Collections.emptyList());
+        } else {
             try {
                 try {
                     retryService.testWith2SecDelayMax5Times(() -> {
@@ -251,25 +237,15 @@ public class AzureResourceConnector implements ResourceConnector<Map<String, Map
                 } catch (ActionFailedException ignored) {
                     LOGGER.debug("Resource group not found with name: {}", resourceGroupName);
                 }
-                if (azureStorage.isPersistentStorage(azureStorage.getPersistentStorageName(stack))) {
-                    CloudContext cloudCtx = ac.getCloudContext();
-                    AzureCredentialView azureCredentialView = new AzureCredentialView(ac.getCloudCredential());
-                    Boolean singleResourceGroup = azureResourceGroupMetadataProvider.useSingleResourceGroup(stack);
-
-                    String imageStorageName = azureStorage.getImageStorageName(azureCredentialView, cloudCtx, stack);
-                    String imageResourceGroupName = azureResourceGroupMetadataProvider.getImageResourceGroupName(cloudCtx, stack);
-                    String diskContainer = azureStorage.getDiskContainerName(cloudCtx);
-                    deleteContainer(client, imageResourceGroupName, imageStorageName, diskContainer);
-                }
             } catch (CloudException e) {
                 if (e.response().code() != AzureConstants.NOT_FOUND) {
-                    throw new CloudConnectorException(String.format("Could not delete resource group: %s", resource.getName()), e);
+                    throw new CloudConnectorException(String.format("Could not delete resource group: %s", resourceGroupName), e);
                 } else {
                     return check(ac, Collections.emptyList());
                 }
             }
+            return check(ac, resources);
         }
-        return check(ac, resources);
     }
 
     @Override
@@ -291,84 +267,41 @@ public class AzureResourceConnector implements ResourceConnector<Map<String, Map
     }
 
     @Override
-    public Map<String, Map<String, Object>> collectResourcesToRemove(AuthenticatedContext ac, CloudStack stack, List<CloudResource> resources,
-            List<CloudInstance> vms) {
-        AzureClient client = ac.getParameter(AzureClient.class);
-        AzureCredentialView azureCredentialView = new AzureCredentialView(ac.getCloudCredential());
-        String resourceGroupName = azureResourceGroupMetadataProvider.getResourceGroupName(ac.getCloudContext(), stack);
-        Map<String, Map<String, Object>> resp = new HashMap<>(vms.size());
-        for (CloudInstance instance : vms) {
-            // TODO: it should be async!
-            resp.put(instance.getInstanceId(), collectInstanceResourcesToRemove(ac, stack, client, azureCredentialView, resourceGroupName, instance));
-        }
-        return resp;
-    }
-
-    private Map<String, Object> collectInstanceResourcesToRemove(AuthenticatedContext ac, CloudStack stack, AzureClient client,
-            AzureCredentialView azureCredentialView, String resourceGroupName, CloudInstance instance) {
-        String instanceId = instance.getInstanceId();
-        Long privateId = instance.getTemplate().getPrivateId();
-        AzureDiskType azureDiskType = AzureDiskType.getByValue(instance.getTemplate().getVolumes().get(0).getType());
-        String attachedDiskStorageName = azureStorage.getAttachedDiskStorageName(azureStorage.getArmAttachedStorageOption(stack.getParameters()),
-                azureCredentialView, privateId, ac.getCloudContext(), azureDiskType);
-        Map<String, Object> resourcesToRemove = new HashMap<>();
-        resourcesToRemove.put(ATTACHED_DISK_STORAGE_NAME, attachedDiskStorageName);
-        try {
-            if (instanceId != null) {
-                VirtualMachine virtualMachine = client.getVirtualMachine(resourceGroupName, instanceId);
-                if (virtualMachine != null) {
-                    List<String> networkInterfaceIds = virtualMachine.networkInterfaceIds();
-                    List<String> networkInterfacesNames = new ArrayList<>();
-                    List<String> publicIpAddressNames = new ArrayList<>();
-                    for (String interfaceId : networkInterfaceIds) {
-                        NetworkInterface networkInterface = client.getNetworkInterfaceById(interfaceId);
-                        String interfaceName = networkInterface.name();
-                        networkInterfacesNames.add(interfaceName);
-                        Collection<String> ipNames = new HashSet<>();
-                        for (NicIPConfiguration ipConfiguration : networkInterface.ipConfigurations().values()) {
-                            if (ipConfiguration.publicIPAddressId() != null && ipConfiguration.getPublicIPAddress().name() != null) {
-                                ipNames.add(ipConfiguration.getPublicIPAddress().name());
-                            }
-                        }
-                        publicIpAddressNames.addAll(ipNames);
-                    }
-                    resourcesToRemove.put(NETWORK_INTERFACES_NAMES, networkInterfacesNames);
-                    resourcesToRemove.put(PUBLIC_ADDRESS_NAME, publicIpAddressNames);
-
-                    collectRemovableDisks(resourcesToRemove, virtualMachine);
-                }
-            }
-        } catch (CloudException e) {
-            if (e.response().code() != AzureConstants.NOT_FOUND) {
-                throw new CloudConnectorException(e.body().message(), e);
-            }
-        } catch (RuntimeException e) {
-            throw new CloudConnectorException("can't collect instance resources", e);
-        }
-        return resourcesToRemove;
-    }
-
-    private void collectRemovableDisks(Map<String, Object> resourcesToRemove, VirtualMachine virtualMachine) {
-        StorageProfile storageProfile = virtualMachine.storageProfile();
-        Collection<String> storageProfileDiskNames = new ArrayList<>();
-        Collection<String> managedDiskIds = new ArrayList<>();
-
-        // Handle OS disks as ephemeral
-        OSDisk osDisk = storageProfile.osDisk();
-        if (osDisk.vhd() != null) {
-            VirtualHardDisk vhd = osDisk.vhd();
-            storageProfileDiskNames.add(getNameFromConnectionString(vhd.uri()));
-        } else {
-            managedDiskIds.add(osDisk.managedDisk().id());
-        }
-        resourcesToRemove.put(STORAGE_PROFILE_DISK_NAMES, storageProfileDiskNames);
-        resourcesToRemove.put(MANAGED_DISK_IDS, managedDiskIds);
+    public List<CloudResourceStatus> downscale(AuthenticatedContext ac, CloudStack stack, List<CloudResource> resources, List<CloudInstance> vms,
+            List<CloudResource> resourcesToRemove) {
+        return azureDownscaleService.downscale(ac, stack, resources, vms, resourcesToRemove);
     }
 
     @Override
-    public List<CloudResourceStatus> downscale(AuthenticatedContext ac, CloudStack stack, List<CloudResource> resources, List<CloudInstance> vms,
-            Map<String, Map<String, Object>> resourcesToRemove) {
-        return azureDownscaleService.downscale(ac, stack, resources, vms, resourcesToRemove);
+    public List<CloudResource> collectResourcesToRemove(AuthenticatedContext authenticatedContext, CloudStack stack,
+            List<CloudResource> resources, List<CloudInstance> vms) {
+
+        List<CloudResource> result = Lists.newArrayList();
+        // This filters out resources like Availablity Sets, so needed only for downscales
+        if (azureUtils.getInstanceList(stack).size() != vms.size()) {
+            result.addAll(getDeletableResources(resources, vms));
+        }
+        result.addAll(collectProviderSpecificResources(resources, vms));
+        return result;
+    }
+
+    @Override
+    protected Collection<CloudResource> getDeletableResources(Iterable<CloudResource> resources, Iterable<CloudInstance> instances) {
+        Collection<CloudResource> result = new ArrayList<>();
+        for (CloudInstance instance : instances) {
+            String instanceId = instance.getInstanceId();
+            for (CloudResource resource : resources) {
+                if (instanceId.equalsIgnoreCase(resource.getName()) || instanceId.equalsIgnoreCase(resource.getInstanceId())) {
+                    result.add(resource);
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    protected List<CloudResource> collectProviderSpecificResources(List<CloudResource> resources, List<CloudInstance> vms) {
+        return List.of();
     }
 
     @Override

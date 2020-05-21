@@ -75,7 +75,7 @@ public class AzureCloudResourceServiceTest {
         when(operation.targetResource()).thenReturn(t);
         when(operation.provisioningState()).thenReturn("succeeded");
 
-        List<CloudResource> cloudResourceList = underTest.getCloudResources(deployment);
+        List<CloudResource> cloudResourceList = underTest.getDeploymentCloudResources(deployment);
 
         assertEquals(1, cloudResourceList.size());
         CloudResource cloudResource = cloudResourceList.get(0);
@@ -98,7 +98,7 @@ public class AzureCloudResourceServiceTest {
         when(operation.targetResource()).thenReturn(t);
         when(operation.provisioningState()).thenReturn("failed");
 
-        List<CloudResource> cloudResourceList = underTest.getCloudResources(deployment);
+        List<CloudResource> cloudResourceList = underTest.getDeploymentCloudResources(deployment);
 
         assertEquals(1, cloudResourceList.size());
         CloudResource cloudResource = cloudResourceList.get(0);
@@ -121,7 +121,7 @@ public class AzureCloudResourceServiceTest {
         when(operation.targetResource()).thenReturn(t);
         when(operation.provisioningState()).thenReturn("succeeded");
 
-        List<CloudResource> cloudResourceList = underTest.getCloudResources(deployment);
+        List<CloudResource> cloudResourceList = underTest.getDeploymentCloudResources(deployment);
 
         assertEquals(0, cloudResourceList.size());
     }

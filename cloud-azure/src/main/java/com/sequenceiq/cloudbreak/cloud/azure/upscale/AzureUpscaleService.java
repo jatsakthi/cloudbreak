@@ -2,11 +2,11 @@ package com.sequenceiq.cloudbreak.cloud.azure.upscale;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
+import org.apache.commons.collections4.ListUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -15,7 +15,6 @@ import com.microsoft.azure.CloudError;
 import com.microsoft.azure.CloudException;
 import com.microsoft.azure.management.resources.Deployment;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureCloudResourceService;
-import com.sequenceiq.cloudbreak.cloud.azure.AzureDiskType;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureInstanceTemplateOperation;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureResourceGroupMetadataProvider;
 import com.sequenceiq.cloudbreak.cloud.azure.AzureStorage;
@@ -76,20 +75,18 @@ public class AzureUpscaleService {
         try {
             List<Group> scaledGroups = cloudResourceHelper.getScaledGroups(stack);
             CloudResource armTemplate = getArmTemplate(resources, stackName);
-            Map<String, AzureDiskType> storageAccounts = azureStackView.getStorageAccounts();
-            String region = cloudContext.getLocation().getRegion().value();
-            for (Map.Entry<String, AzureDiskType> entry : storageAccounts.entrySet()) {
-                azureStorage.createStorage(client, entry.getKey(), entry.getValue(), resourceGroupName, region, isEncryptionNeeded(stack), stack.getTags());
-            }
             purgeExistingInstances(azureStackView);
             Deployment templateDeployment =
                     azureTemplateDeploymentService.getTemplateDeployment(client, stack, ac, azureStackView, AzureInstanceTemplateOperation.UPSCALE);
             LOGGER.info("Created template deployment for upscale: {}", templateDeployment.exportTemplate().template());
 
-            List<CloudResource> cloudResources = azureCloudResourceService.getCloudResources(templateDeployment);
-            azureCloudResourceService.saveCloudResources(resourceNotifier, cloudContext, cloudResources);
+            List<CloudResource> templateResources = azureCloudResourceService.getDeploymentCloudResources(templateDeployment);
+            List<CloudResource> newInstances =
+                    azureCloudResourceService.getInstanceCloudResources(stackName, templateResources, scaledGroups, resourceGroupName);
+            List<CloudResource> osDiskResources = azureCloudResourceService.getAttachedOsDiskResources(ac, newInstances, resourceGroupName);
 
-            List<CloudResource> newInstances = azureCloudResourceService.getInstanceCloudResources(stackName, cloudResources, scaledGroups, resourceGroupName);
+            azureCloudResourceService.saveCloudResources(resourceNotifier, cloudContext, ListUtils.union(templateResources, osDiskResources));
+
             List<CloudResource> reattachableVolumeSets = getReattachableVolumeSets(resources, newInstances);
             List<CloudResource> networkResources = azureCloudResourceService.getNetworkResources(resources);
 

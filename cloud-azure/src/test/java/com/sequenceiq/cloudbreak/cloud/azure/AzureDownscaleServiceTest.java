@@ -69,16 +69,20 @@ class AzureDownscaleServiceTest {
     @Mock
     private CloudStack cloudStack;
 
+    @Mock
+    private AzureCloudResourceService azureCloudResourceService;
+
     private final List<CloudResource> resourcesToRemoveList = setupCloudResources();
 
     @BeforeEach
     void setup() {
         when(azureResourceGroupMetadataProvider.getResourceGroupName((CloudContext) any(), (CloudStack) any())).thenReturn(RESOURCE_GROUP_NAME);
+        when(azureCloudResourceService.getNetworkResources(any())).thenReturn(List.of());
     }
 
     @Test
     void testWhenDownscaleThenNoAvailabilitySets() {
-        underTest.downscale(ac, cloudStack, List.of(), List.of(), getResourceToRemove());
+        underTest.downscale(ac, cloudStack, List.of(), List.of(), resourcesToRemoveList);
 
         verify(azureUtils).deleteInstances(any(), any());
         verify(azureUtils).waitForDetachNetworkInterfaces(eq(ac), any(), eq(RESOURCE_GROUP_NAME), eq(NETWORK_INTERFACE_NAME_LIST));
@@ -90,7 +94,7 @@ class AzureDownscaleServiceTest {
 
     @Test
     void testWhenTerminateThenAlsoAvailabilitySets() {
-        underTest.terminate(ac, cloudStack, List.of(), List.of(), getResourceToRemove());
+        underTest.terminate(ac, cloudStack, List.of(), List.of(), resourcesToRemoveList);
 
         verify(azureUtils).deleteInstances(any(), any());
         verify(azureUtils).waitForDetachNetworkInterfaces(eq(ac), any(), eq(RESOURCE_GROUP_NAME), eq(NETWORK_INTERFACE_NAME_LIST));
@@ -112,9 +116,7 @@ class AzureDownscaleServiceTest {
                         "NETWORK_INTERFACES_NAMES", NETWORK_INTERFACE_NAME_LIST,
                         "PUBLIC_ADDRESS_NAME", PUBLIC_ADDRESS_NAME_LIST,
                         "AVAILABILITY_SET_NAME", AVAILABILITY_SET_NAME_LIST,
-                        "MANAGED_DISK_IDS", MANAGED_DISK_ID_LIST,
-                        "STORAGE_PROFILE_DISK_NAMES", List.of("storageProfileDiskNames"),
-                        "ATTACHED_DISK_STORAGE_NAME", List.of("attachedDiskStorageName")
+                        "MANAGED_DISK_IDS", MANAGED_DISK_ID_LIST
                 )
         );
     }

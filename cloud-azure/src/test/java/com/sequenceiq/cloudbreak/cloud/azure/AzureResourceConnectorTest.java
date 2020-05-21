@@ -120,7 +120,7 @@ public class AzureResourceConnectorTest {
         when(deployment.exportTemplate()).thenReturn(deploymentExportResult);
         when(client.createTemplateDeployment(any(), any(), any(), any())).thenReturn(deployment);
         when(azureResourceGroupMetadataProvider.getResourceGroupName(cloudContext, stack)).thenReturn(RESOURCE_GROUP_NAME);
-        when(azureCloudResourceService.getCloudResources(deployment)).thenReturn(instances);
+        when(azureCloudResourceService.getDeploymentCloudResources(deployment)).thenReturn(instances);
         when(azureCloudResourceService.getInstanceCloudResources(STACK_NAME, instances, groups, RESOURCE_GROUP_NAME)).thenReturn(instances);
         when(azureStackViewProvider.getAzureStack(any(), eq(stack), eq(client), eq(ac))).thenReturn(azureStackView);
     }

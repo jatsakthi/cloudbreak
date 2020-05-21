@@ -52,6 +52,11 @@ public class ResourceService {
         return repository.findByStackIdAndNameAndType(stackId, name, type);
     }
 
+    public List<Resource> findAllByStackIdWithResourceReference(Long id) {
+        return repository.findAllByStackIdWithResourceReference(id);
+    }
+
+
     public void delete(Resource resource) {
         repository.delete(resource);
     }

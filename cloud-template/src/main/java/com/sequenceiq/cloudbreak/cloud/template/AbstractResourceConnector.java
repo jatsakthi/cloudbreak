@@ -149,7 +149,7 @@ public abstract class AbstractResourceConnector implements ResourceConnector<Lis
     public List<CloudResource> collectResourcesToRemove(AuthenticatedContext authenticatedContext, CloudStack stack,
             List<CloudResource> resources, List<CloudInstance> vms) {
         List<CloudResource> result = Lists.newArrayList();
-        result.addAll(getDeleteResources(resources, vms));
+        result.addAll(getDeletableResources(resources, vms));
         result.addAll(collectProviderSpecificResources(resources, vms));
         return result;
     }
@@ -235,7 +235,7 @@ public abstract class AbstractResourceConnector implements ResourceConnector<Lis
         return null;
     }
 
-    protected Collection<CloudResource> getDeleteResources(Iterable<CloudResource> resources, Iterable<CloudInstance> instances) {
+    protected Collection<CloudResource> getDeletableResources(Iterable<CloudResource> resources, Iterable<CloudInstance> instances) {
         Collection<CloudResource> result = new ArrayList<>();
         for (CloudInstance instance : instances) {
             String instanceId = instance.getInstanceId();
