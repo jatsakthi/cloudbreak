@@ -121,7 +121,8 @@ public class DefaultCloudbreakEventService implements CloudbreakEventService {
     public List<StructuredNotificationEvent> cloudbreakEventsForStack(Long stackId) {
         List<StructuredNotificationEvent> events = new ArrayList<>();
         if (stackId != null) {
-            events = structuredEventService.getEventsWithTypeAndResourceId(StructuredNotificationEvent.class, "stacks", stackId);
+            events = structuredEventService.getEventsWithTypeAndResourceId(StructuredNotificationEvent.class,
+                    CloudbreakEventService.DATAHUB_RESOURCE_TYPE, stackId);
         }
         return events;
     }
@@ -129,7 +130,8 @@ public class DefaultCloudbreakEventService implements CloudbreakEventService {
     @Override
     public Page<StructuredNotificationEvent> cloudbreakEventsForStack(Long stackId, Pageable pageable) {
         return Optional.ofNullable(stackId)
-                .map(id -> structuredEventService.getEventsLimitedWithTypeAndResourceId(StructuredNotificationEvent.class, "stacks", id, pageable))
+                .map(id -> structuredEventService.getEventsLimitedWithTypeAndResourceId(StructuredNotificationEvent.class,
+                        CloudbreakEventService.DATAHUB_RESOURCE_TYPE, id, pageable))
                 .orElse(Page.empty());
     }
 

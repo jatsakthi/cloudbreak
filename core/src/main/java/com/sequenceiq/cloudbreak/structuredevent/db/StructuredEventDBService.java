@@ -24,6 +24,7 @@ import com.sequenceiq.cloudbreak.domain.stack.Stack;
 import com.sequenceiq.cloudbreak.service.AbstractWorkspaceAwareResourceService;
 import com.sequenceiq.cloudbreak.service.stack.StackService;
 import com.sequenceiq.cloudbreak.structuredevent.StructuredEventService;
+import com.sequenceiq.cloudbreak.structuredevent.event.CloudbreakEventService;
 import com.sequenceiq.cloudbreak.structuredevent.event.StructuredEvent;
 import com.sequenceiq.cloudbreak.structuredevent.event.StructuredEventContainer;
 import com.sequenceiq.cloudbreak.structuredevent.event.StructuredEventType;
@@ -135,7 +136,7 @@ public class StructuredEventDBService extends AbstractWorkspaceAwareResourceServ
 
     @Override
     public StructuredEventContainer getStructuredEventsForStack(String name, Long workspaceId) {
-        return getEventsForUserWithResourceId("stacks", getStackIfAvailable(workspaceId, name).getId());
+        return getEventsForUserWithResourceId(CloudbreakEventService.DATAHUB_RESOURCE_TYPE, getStackIfAvailable(workspaceId, name).getId());
     }
 
     public StructuredEventEntity findByWorkspaceIdAndId(Long workspaceId, Long id) {
@@ -151,6 +152,7 @@ public class StructuredEventDBService extends AbstractWorkspaceAwareResourceServ
     }
 
     private Stack getStackIfAvailable(Long workspaceId, String name) {
-        return Optional.ofNullable(stackService.getByNameInWorkspace(name, workspaceId)).orElseThrow(notFound("stack", name));
+        return Optional.ofNullable(stackService.getByNameInWorkspace(name, workspaceId))
+                .orElseThrow(notFound(CloudbreakEventService.DATAHUB_RESOURCE_TYPE, name));
     }
 }

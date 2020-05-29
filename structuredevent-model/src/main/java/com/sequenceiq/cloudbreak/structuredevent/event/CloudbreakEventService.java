@@ -10,6 +10,8 @@ import com.sequenceiq.cloudbreak.event.ResourceEvent;
 
 public interface CloudbreakEventService {
 
+    String DATAHUB_RESOURCE_TYPE = "datahub";
+
     void fireCloudbreakEvent(Long entityId, String eventType, ResourceEvent resourceEvent);
 
     void fireCloudbreakEvent(Long entityId, String eventType, ResourceEvent resourceEvent, Collection<String> eventMessageArgs);

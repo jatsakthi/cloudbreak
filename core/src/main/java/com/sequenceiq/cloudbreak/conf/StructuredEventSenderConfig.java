@@ -22,6 +22,9 @@ public class StructuredEventSenderConfig {
     @Value("${cb.audit.filepath:}")
     private String auditFilePath;
 
+    @Value("${cb.audit.service.enabled}")
+    private boolean auditServiceEnabled;
+
     @Value("${cb.kafka.structured.events.topic:StructuredEvents}")
     private String structuredEventsTopic;
 
@@ -31,6 +34,10 @@ public class StructuredEventSenderConfig {
 
     public boolean isFilePathConfigured() {
         return StringUtils.isNotEmpty(auditFilePath);
+    }
+
+    public boolean isAuditServiceConfigured() {
+        return auditServiceEnabled;
     }
 
     public String getAuditFilePath() {
