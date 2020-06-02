@@ -29,6 +29,8 @@ import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.RetryableFlowRe
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackStatusV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.StackViewV4Responses;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.dr.BackupV4Response;
+import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.dr.RestoreV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.upgrade.UpgradeOptionV4Response;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.stacks.response.upgrade.UpgradeV4Response;
 import com.sequenceiq.cloudbreak.domain.stack.Stack;
@@ -182,4 +184,13 @@ public class StackV4Controller extends NotificationController implements StackV4
     public FlowIdentifier upgradeClusterByName(Long workspaceId, String name, String imageId) {
         return stackOperations.upgradeCluster(NameOrCrn.ofName(name), workspaceId, imageId);
     }
+    @Override
+    public BackupV4Response backupDatabase(Long workspaceId, String name, String backupLocation) {
+        return null;
+    }
+    @Override
+    public RestoreV4Response restoreDatabase(Long workspaceId, String name, String backupLocation) {
+        return null;
+    }
+
 }
