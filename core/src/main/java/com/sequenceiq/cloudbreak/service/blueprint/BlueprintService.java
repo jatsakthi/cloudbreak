@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import com.sequenceiq.cloudbreak.api.endpoint.v4.dto.NameOrCrn;
 import com.sequenceiq.cloudbreak.auth.altus.Crn;
 import com.sequenceiq.cloudbreak.auth.altus.Crn.ResourceType;
+import com.sequenceiq.cloudbreak.cloud.model.AutoscaleRecommendation;
 import com.sequenceiq.cloudbreak.cloud.model.PlatformRecommendation;
 import com.sequenceiq.cloudbreak.cmtemplate.CentralBlueprintParameterQueryService;
 import com.sequenceiq.cloudbreak.cmtemplate.CmTemplateProcessorFactory;
@@ -169,6 +170,10 @@ public class BlueprintService extends AbstractWorkspaceAwareResourceService<Blue
             throw new BadRequestException("region cannot be null");
         }
         return cloudResourceAdvisor.createForBlueprint(workspaceId, blueprintName, credentialName, region, platformVariant, availabilityZone, cdpResourceType);
+    }
+
+    public AutoscaleRecommendation getAutoscaleRecommendation(Long workspaceId, String blueprintName) {
+        return cloudResourceAdvisor.getAutoscaleRecommendation(workspaceId, blueprintName);
     }
 
     @Override
